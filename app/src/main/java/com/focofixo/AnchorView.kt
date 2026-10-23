@@ -10,8 +10,15 @@ class AnchorView(context: Context) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val border = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    var offset: Vec2 = Vec2(0f, 0f)
-        set(v) { field = v; invalidate() }
+    private val drift = DotDrift(ROWS)
+    private var offset = Vec2(0f, 0f)
+
+    /** Um passo de animação: o offset lateral desloca os pontos; o vertical os faz deslizar com inércia. */
+    fun step(o: Vec2, dt: Float) {
+        offset = o
+        drift.update(o.y, dt)
+        invalidate()
+    }
     var presence = 1f // 0..1, vindo do MotionFilter
     var settings: AnchorSettings = AnchorSettings()
         set(v) { field = v; invalidate() }
@@ -34,8 +41,7 @@ class AnchorView(context: Context) : View(context) {
             // ganho por ponto (0.7..1.3): cada ponto se move um pouco diferente, como no recurso da Apple
             val gain = 0.7f + 0.6f * ((i * 3) % ROWS) / (ROWS - 1)
             val dx = offset.x * reach * gain
-            val dy = -offset.y * reach * gain
-            val y = height * (i + 1f) / (ROWS + 1f) + dy
+            val y = height * drift.y[i]
             for (x in floatArrayOf(margin + dx, width - margin + dx)) {
                 canvas.drawCircle(x, y, r + d, border)
                 canvas.drawCircle(x, y, r, paint)
@@ -43,5 +49,5 @@ class AnchorView(context: Context) : View(context) {
         }
     }
 
-    private companion object { const val ROWS = 4 }
+    private companion object { const val ROWS = 6 }
 }
