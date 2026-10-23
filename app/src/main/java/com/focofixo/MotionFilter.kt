@@ -27,8 +27,14 @@ class MotionFilter(var sensitivity: Float, private val maxOffset: Float = 1f) {
         val target = (hypot(out.x, out.y) / PRESENCE_FULL).coerceAtMost(1f)
         val tau = if (target > presence) ATTACK_TAU else RELEASE_TAU
         presence += dt / (tau + dt) * (target - presence)
+        val hard = (hypot(out.x, out.y) / INTENSITY_FULL).coerceAtMost(1f)
+        intensity += dt / ((if (hard > intensity) ATTACK_TAU else RELEASE_TAU) + dt) * (hard - intensity)
         return out
     }
+
+    /** 0 = movimento suave, 1 = brusco; define quantos pontos aparecem. */
+    var intensity = 0f
+        private set
 
     /** 0 = parado (pontos somem), 1 = movimento claro. */
     var presence = 0f
@@ -40,6 +46,7 @@ class MotionFilter(var sensitivity: Float, private val maxOffset: Float = 1f) {
         const val SLOW_TAU = 1f
         const val FULL_SCALE = 4f // m/s² que levam o ponto ao limite com sensibilidade 1
         const val PRESENCE_FULL = 0.1f // deslocamento normalizado que já deixa os pontos totalmente visíveis
+        const val INTENSITY_FULL = 0.6f // deslocamento normalizado considerado "brusco"
         const val ATTACK_TAU = 0.2f
         const val RELEASE_TAU = 2f
     }

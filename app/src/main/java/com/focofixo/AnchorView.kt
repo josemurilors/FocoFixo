@@ -15,11 +15,13 @@ class AnchorView(context: Context) : View(context) {
 
     /** Um passo de animação: o offset lateral desloca os pontos; o vertical os faz deslizar com inércia. */
     fun step(o: Vec2, dt: Float) {
-        offset = o
+        offset = if (settings.invertLateral) Vec2(-o.x, o.y) else o
         drift.update(o.y, dt, settings.speed)
         invalidate()
     }
-    var presence = 1f // 0..1, vindo do MotionFilter
+    var presence = 1f  // 0..1, vindo do MotionFilter
+    var intensity = 1f // 0..1: movimento mais brusco acende mais pontos
+    private var baseAlpha = 0
     var settings: AnchorSettings = AnchorSettings()
         set(v) {
             if (v.dotCount != field.dotCount) drift = DotDrift(v.dotCount)
@@ -37,6 +39,7 @@ class AnchorView(context: Context) : View(context) {
         paint.color = color
         // contorno de cor oposta: o desenho fica visível em fundo claro e escuro
         border.color = if (color == 0xFFFFFFFF.toInt()) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
+        baseAlpha = a
         paint.alpha = a
         border.alpha = a
         if (settings.pattern == PATTERN_HORIZON) drawHorizon(canvas, r, d) else drawEdges(canvas, r, d)
@@ -50,6 +53,11 @@ class AnchorView(context: Context) : View(context) {
         border.strokeWidth = 4f * d
         val ys = drift.y // cópia local: o drift pode ser trocado quando a quantidade muda
         for (i in ys.indices) {
+            // metade dos pontos sempre; o resto acende (um a um, suave) conforme o movimento fica brusco
+            val lit = (ys.size * (0.5f + 0.5f * intensity) - i).coerceIn(0f, 1f)
+            if (lit <= 0f) continue
+            paint.alpha = (baseAlpha * lit).toInt()
+            border.alpha = paint.alpha
             val dx = offset.x * reach * dotGain(i)
             val y = height * ys[i]
             for (x in floatArrayOf(margin + dx, width - margin + dx)) {

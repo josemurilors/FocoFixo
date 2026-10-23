@@ -30,6 +30,7 @@ data class AnchorSettings(
     val speed: Float = 1f,        // multiplicador da velocidade do deslize
     val dotCount: Int = 6,        // pontos por borda
     val pattern: Int = 0,         // índice em PATTERNS
+    val invertLateral: Boolean = false, // pontos vão para o lado da curva, em vez do oposto
 )
 
 private val Context.store by preferencesDataStore("focofixo")
@@ -44,6 +45,7 @@ private val FADE = booleanPreferencesKey("fade_idle")
 private val SPEED = floatPreferencesKey("speed")
 private val COUNT = intPreferencesKey("dot_count")
 private val PATTERN = intPreferencesKey("pattern")
+private val INVERT = booleanPreferencesKey("invert_lateral")
 
 class SettingsRepo(private val context: Context) {
     val flow: Flow<AnchorSettings> = context.store.data.map { p ->
@@ -60,6 +62,7 @@ class SettingsRepo(private val context: Context) {
             (p[SPEED] ?: d.speed).coerceIn(0.2f, 2.5f),
             (p[COUNT] ?: d.dotCount).coerceIn(3, 12),
             (p[PATTERN] ?: d.pattern).coerceIn(0, PATTERNS.lastIndex),
+            p[INVERT] ?: d.invertLateral,
         )
     }
 
@@ -67,7 +70,7 @@ class SettingsRepo(private val context: Context) {
         context.store.edit {
             it[SENS] = s.sensitivity; it[SIZE] = s.dotSizeDp; it[ALPHA] = s.opacity
             it[THRESHOLD] = s.threshold; it[DAMPING] = s.damping; it[COLOR] = s.colorIndex; it[HZ] = s.sampleHz; it[FADE] = s.fadeIdle
-            it[SPEED] = s.speed; it[COUNT] = s.dotCount; it[PATTERN] = s.pattern
+            it[SPEED] = s.speed; it[COUNT] = s.dotCount; it[PATTERN] = s.pattern; it[INVERT] = s.invertLateral
         }
     }
 }

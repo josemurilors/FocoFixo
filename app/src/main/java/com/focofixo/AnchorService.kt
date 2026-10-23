@@ -70,6 +70,7 @@ class AnchorService : Service() {
         return motion.start(rate) { a, dt ->
             val o = filter.update(a.x, a.y, dt)
             v.presence = filter.presence
+            v.intensity = filter.intensity
             v.step(o, dt)
         }
     }

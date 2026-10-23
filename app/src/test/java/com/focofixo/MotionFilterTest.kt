@@ -62,6 +62,22 @@ class MotionFilterTest {
         assertTrue(f.presence > 0.5f)
     }
 
+    @Test fun intensityGrowsWithViolenceAndFallsAtRest() {
+        fun run(amp: Float): Float {
+            val f = MotionFilter(sensitivity = 1f)
+            repeat(200) { f.update(if (it % 20 < 10) amp else -amp, 0f, dt) }
+            return f.intensity
+        }
+        val mild = run(1.2f)
+        val hard = run(8f)
+        assertTrue(hard > mild + 0.2f)
+        assertTrue(hard <= 1f && mild >= 0f)
+        val f = MotionFilter(sensitivity = 1f)
+        repeat(200) { f.update(if (it % 20 < 10) 8f else -8f, 0f, dt) }
+        repeat(1500) { f.update(0f, 0f, dt) }
+        assertTrue(f.intensity < 0.05f)
+    }
+
     @Test fun clamped() {
         val f = MotionFilter(sensitivity = 3f)
         repeat(50) {
