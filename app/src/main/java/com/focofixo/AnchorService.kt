@@ -50,6 +50,7 @@ class AnchorService : Service() {
         )
         (getSystemService(WINDOW_SERVICE) as WindowManager).addView(v, lp)
         view = v
+        running = true
         scope.launch {
             SettingsRepo(this@AnchorService).flow.collect { s ->
                 filter.sensitivity = s.sensitivity
@@ -92,6 +93,7 @@ class AnchorService : Service() {
         if (::motion.isInitialized) motion.stop()
         view?.let { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it) }
         view = null
+        running = false
         scope.cancel()
         super.onDestroy()
     }
@@ -99,6 +101,8 @@ class AnchorService : Service() {
     companion object {
         private const val CHANNEL = "focofixo"
         private const val ACTION_STOP = "com.focofixo.STOP"
+        @Volatile var running = false
+            private set
         fun start(ctx: Context) { ctx.startForegroundService(Intent(ctx, AnchorService::class.java)) }
         fun stop(ctx: Context) { ctx.stopService(Intent(ctx, AnchorService::class.java)) }
     }

@@ -14,6 +14,9 @@ val DOT_COLORS = listOf(
     "Amarelo" to 0xFFFDD835.toInt(), "Azul" to 0xFF1E88E5.toInt(), "Verde" to 0xFF43A047.toInt(),
 )
 val SAMPLE_RATES = listOf(30, 60, 120)
+const val PATTERN_GRID = 1
+const val PATTERN_HORIZON = 2
+val PATTERNS = listOf("Pontos", "Grade", "Horizonte") // índice = valor de AnchorSettings.pattern
 
 data class AnchorSettings(
     val sensitivity: Float = 1f,
@@ -26,6 +29,7 @@ data class AnchorSettings(
     val fadeIdle: Boolean = true, // pontos somem com pouco movimento
     val speed: Float = 1f,        // multiplicador da velocidade do deslize
     val dotCount: Int = 6,        // pontos por borda
+    val pattern: Int = 0,         // índice em PATTERNS
 )
 
 private val Context.store by preferencesDataStore("focofixo")
@@ -39,6 +43,7 @@ private val HZ = intPreferencesKey("sample_hz")
 private val FADE = booleanPreferencesKey("fade_idle")
 private val SPEED = floatPreferencesKey("speed")
 private val COUNT = intPreferencesKey("dot_count")
+private val PATTERN = intPreferencesKey("pattern")
 
 class SettingsRepo(private val context: Context) {
     val flow: Flow<AnchorSettings> = context.store.data.map { p ->
@@ -54,6 +59,7 @@ class SettingsRepo(private val context: Context) {
             p[FADE] ?: d.fadeIdle,
             (p[SPEED] ?: d.speed).coerceIn(0.2f, 2.5f),
             (p[COUNT] ?: d.dotCount).coerceIn(3, 12),
+            (p[PATTERN] ?: d.pattern).coerceIn(0, PATTERNS.lastIndex),
         )
     }
 
@@ -61,7 +67,7 @@ class SettingsRepo(private val context: Context) {
         context.store.edit {
             it[SENS] = s.sensitivity; it[SIZE] = s.dotSizeDp; it[ALPHA] = s.opacity
             it[THRESHOLD] = s.threshold; it[DAMPING] = s.damping; it[COLOR] = s.colorIndex; it[HZ] = s.sampleHz; it[FADE] = s.fadeIdle
-            it[SPEED] = s.speed; it[COUNT] = s.dotCount
+            it[SPEED] = s.speed; it[COUNT] = s.dotCount; it[PATTERN] = s.pattern
         }
     }
 }

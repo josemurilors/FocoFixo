@@ -32,8 +32,13 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
-    // shortcut: estado do switch não reflete o serviço se ele for desligado pela notificação; sincronizar se incomodar
     private var active by mutableStateOf(false)
+
+    // o serviço também liga/desliga pela notificação e pelo tile
+    override fun onResume() {
+        super.onResume()
+        active = AnchorService.running
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,6 +58,12 @@ class MainActivity : ComponentActivity() {
                     ) {
                         Text("Ativar âncora", Modifier.weight(1f))
                         Switch(active, onCheckedChange = { toggle(it) })
+                    }
+                    Text("Padrão visual")
+                    Row {
+                        PATTERNS.forEachIndexed { i, name ->
+                            FilterChip(s.pattern == i, { save(s.copy(pattern = i)) }, { Text(name) }, Modifier.padding(end = 8.dp))
+                        }
                     }
                     Text("Sensibilidade")
                     Slider(s.sensitivity, { save(s.copy(sensitivity = it)) }, valueRange = 0f..3f)
