@@ -1,47 +1,74 @@
 package com.focofixo
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.os.Build
+import android.os.Bundle
 import android.os.IBinder
+import android.os.PowerManager
 import android.provider.Settings
+import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 class AnchorService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val filter = MotionFilter(sensitivity = 1f)
     private val sizeEnvelope = SizeEnvelope()
+    private val gate = SpeedGate()
     private lateinit var motion: MotionSource
     private var view: AnchorView? = null
+    private var auto = false
+    private var screenOn = true
+    private var shown = false
+    private var fastGps: Boolean? = null
+    private var hz = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) { stopSelf(); return START_NOT_STICKY }
         if (view != null) return START_NOT_STICKY // já ativo: um só overlay
+        val settings = runBlocking { SettingsRepo(this@AnchorService).flow.first() } // arquivo pequeno, leitura rápida
+        val wantsAuto = settings.mode == MODE_AUTO
+        auto = wantsAuto && hasLocationPermission(this)
         // startForegroundService exige startForeground logo; fazemos antes de qualquer saída
         enterForeground()
         if (!Settings.canDrawOverlays(this)) { stopSelf(); return START_NOT_STICKY }
+        if (wantsAuto && !auto) {
+            Toast.makeText(this, "O modo Auto precisa da permissão de localização.", Toast.LENGTH_LONG).show()
+            stopSelf(); return START_NOT_STICKY
+        }
 
         val v = AnchorView(this)
         motion = MotionSource(this)
-        if (!startMotion(v, SAMPLE_RATES[1])) {
+        hz = settings.sampleHz
+        if (!startMotion(v)) {
             Toast.makeText(this, "Este aparelho não tem sensor de movimento.", Toast.LENGTH_LONG).show()
             stopSelf(); return START_NOT_STICKY
         }
+        shown = true
         val lp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -56,49 +83,115 @@ class AnchorService : Service() {
         (getSystemService(WINDOW_SERVICE) as WindowManager).addView(v, lp)
         view = v
         running = true
+
+        screenOn = getSystemService(PowerManager::class.java).isInteractive
+        registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_ON).apply { addAction(Intent.ACTION_SCREEN_OFF) })
+        gate.limitKmh = settings.autoSpeedKmh
+        if (auto) requestLocation(fast = false)
+        applyVisibility()
+
         scope.launch {
             SettingsRepo(this@AnchorService).flow.collect { s ->
                 filter.sensitivity = s.sensitivity
                 filter.threshold = s.threshold
                 filter.smoothingTau = 0.03f + 0.4f * s.damping
                 v.settings = s
-                if (s.sampleHz != hz) { motion.stop(); startMotion(v, s.sampleHz) }
+                gate.limitKmh = s.autoSpeedKmh
+                if (s.sampleHz != hz) { hz = s.sampleHz; if (shown) { motion.stop(); startMotion(v) } }
             }
         }
         return START_NOT_STICKY
     }
 
-    private var hz = 0
+    private fun startMotion(v: AnchorView): Boolean = motion.start(hz) { s ->
+        val o = filter.update(s.accel.x, s.accel.y, s.dt)
+        v.presence = filter.presence
+        v.intensity = filter.intensity
+        v.sizeBoost = sizeEnvelope.update(s.accel.y, s.dt)
+        v.step(o, s.rates, s.dt)
+    }
 
-    private fun startMotion(v: AnchorView, rate: Int): Boolean {
-        hz = rate
-        return motion.start(rate) { s ->
-            val o = filter.update(s.accel.x, s.accel.y, s.dt)
-            v.presence = filter.presence
-            v.intensity = filter.intensity
-            v.sizeBoost = sizeEnvelope.update(s.accel.y, s.dt)
-            v.step(o, s.rates, s.dt)
+    /** Pontos e sensores só com a tela acesa e, no Auto, com o veículo andando. */
+    private fun applyVisibility() {
+        val v = view ?: return
+        val show = screenOn && (!auto || gate.visible)
+        if (show == shown) return
+        shown = show
+        v.visibility = if (show) View.VISIBLE else View.GONE
+        if (show) startMotion(v) else motion.stop()
+    }
+
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            screenOn = i.action == Intent.ACTION_SCREEN_ON
+            applyVisibility()
         }
     }
+
+    // implementado por inteiro: antes do Android 11 os métodos de LocationListener não têm corpo padrão
+    private val locationListener = object : LocationListener {
+        override fun onLocationChanged(l: Location) {
+            val was = gate.visible
+            gate.update(if (l.hasSpeed()) l.speed else null, l.latitude, l.longitude, l.elapsedRealtimeNanos / 1_000_000)
+            if (gate.fast != fastGps) requestLocation(gate.fast)
+            if (gate.visible != was) notifyStatus()
+            applyVisibility()
+        }
+        override fun onProviderEnabled(provider: String) = Unit
+        override fun onProviderDisabled(provider: String) = Unit
+        @Deprecated("Deprecated in Java")
+        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
+    }
+
+    /** Econômico: rede a cada 30 s. Rápido (perto do limite ou âncora visível): GPS a cada 2 s. */
+    @Suppress("MissingPermission") // só chamado com auto = true, que exige a permissão
+    private fun requestLocation(fast: Boolean) {
+        fastGps = fast
+        val lm = getSystemService(LocationManager::class.java)
+        lm.removeUpdates(locationListener)
+        val providers = lm.allProviders
+        val p = when {
+            !fast && lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
+            LocationManager.GPS_PROVIDER in providers -> LocationManager.GPS_PROVIDER
+            else -> LocationManager.NETWORK_PROVIDER
+        }
+        lm.requestLocationUpdates(p, if (fast) 2_000L else 30_000L, 0f, locationListener, mainLooper)
+    }
+
+    private fun notification(): Notification {
+        val stop = PendingIntent.getService(
+            this, 0, Intent(this, AnchorService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE,
+        )
+        return Notification.Builder(this, CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_menu_compass)
+            .setContentTitle(if (auto) "FocoFixo · Auto" else "FocoFixo ativo")
+            .apply {
+                if (auto) setContentText(if (gate.visible) "Âncora ativa" else "Aguardando ${gate.limitKmh.toInt()} km/h")
+            }
+            .addAction(Notification.Action.Builder(null, "Desligar", stop).build())
+            .build()
+    }
+
+    private fun notifyStatus() = getSystemService(NotificationManager::class.java).notify(1, notification())
 
     private fun enterForeground() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "FocoFixo", NotificationManager.IMPORTANCE_LOW))
-        val stop = PendingIntent.getService(
-            this, 0, Intent(this, AnchorService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE,
-        )
-        val n = Notification.Builder(this, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_menu_compass)
-            .setContentTitle("FocoFixo ativo")
-            .addAction(Notification.Action.Builder(null, "Desligar", stop).build())
-            .build()
-        if (Build.VERSION.SDK_INT >= 34) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        else startForeground(1, n)
+        val n = notification()
+        if (Build.VERSION.SDK_INT >= 34) {
+            val type = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or
+                (if (auto) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0)
+            startForeground(1, n, type)
+        } else startForeground(1, n)
     }
 
     override fun onDestroy() {
         if (::motion.isInitialized) motion.stop()
-        view?.let { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it) }
+        view?.let {
+            (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it)
+            unregisterReceiver(screenReceiver)
+            getSystemService(LocationManager::class.java).removeUpdates(locationListener)
+        }
         view = null
         running = false
         scope.cancel()
@@ -112,5 +205,8 @@ class AnchorService : Service() {
             private set
         fun start(ctx: Context) { ctx.startForegroundService(Intent(ctx, AnchorService::class.java)) }
         fun stop(ctx: Context) { ctx.stopService(Intent(ctx, AnchorService::class.java)) }
+        // localização precisa: o GPS (modo rápido) não aceita só a aproximada
+        fun hasLocationPermission(ctx: Context) =
+            ctx.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
     }
 }

@@ -9,6 +9,7 @@ import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -72,6 +73,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -79,10 +81,16 @@ class MainActivity : ComponentActivity() {
     private var active by mutableStateOf(false)
     // incrementado a cada retorno, para reavaliar a permissão de sobreposição vinda das Configurações
     private var resumeTick by mutableIntStateOf(0)
+    private var pendingAuto = false // Auto escolhido, esperando a resposta do pedido de localização
+    private lateinit var repo: SettingsRepo
 
     // o serviço também liga/desliga pela notificação e pelo tile
     override fun onResume() {
         super.onResume()
+        if (pendingAuto) {
+            pendingAuto = false
+            if (AnchorService.hasLocationPermission(this)) restart()
+        }
         active = AnchorService.running
         resumeTick++
     }
@@ -91,7 +99,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 0)
-        val repo = SettingsRepo(this)
+        repo = SettingsRepo(this)
         setContent {
             FocoTheme {
                 val s by repo.flow.collectAsState(AnchorSettings())
@@ -110,7 +118,7 @@ class MainActivity : ComponentActivity() {
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        if (tab == 0) HomeScreen(active, resumeTick) { toggle(it) }
+                        if (tab == 0) HomeScreen(active, s, resumeTick, { select(it, s) }, { requestLocation() })
                         else SettingsScreen(s) { n -> scope.launch { repo.save(n) } }
                     }
                 }
@@ -118,9 +126,25 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun toggle(on: Boolean) {
-        if (!on) { AnchorService.stop(this); active = false; return }
+    /** mode: 0 = desligado, ou MODE_ON / MODE_AUTO. */
+    private fun select(mode: Int, s: AnchorSettings) {
+        if (mode == 0) { AnchorService.stop(this); active = false; return }
         if (!Settings.canDrawOverlays(this)) { openOverlaySettings(this); return }
+        lifecycleScope.launch {
+            repo.save(s.copy(mode = mode)) // o serviço lê o modo ao iniciar
+            if (mode == MODE_AUTO && !AnchorService.hasLocationPermission(this@MainActivity)) requestLocation()
+            else restart()
+        }
+    }
+
+    private fun requestLocation() {
+        pendingAuto = true
+        requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 1)
+    }
+
+    // o tipo do serviço em primeiro plano (com ou sem localização) só é definido ao iniciar
+    private fun restart() {
+        AnchorService.stop(this)
         AnchorService.start(this)
         active = true
     }
@@ -155,26 +179,35 @@ private fun Header(title: String) {
 }
 
 @Composable
-private fun HomeScreen(active: Boolean, resumeTick: Int, onToggle: (Boolean) -> Unit) {
+private fun HomeScreen(
+    active: Boolean, s: AnchorSettings, resumeTick: Int, onSelect: (Int) -> Unit, onRequestLocation: () -> Unit,
+) {
     val context = LocalContext.current
     Header("FocoFixo")
 
+    val auto = s.mode == MODE_AUTO
     val colors = if (active) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
     else CardDefaults.cardColors()
-    Card(colors = colors, modifier = Modifier.fillMaxWidth().toggleable(active, role = Role.Switch, onValueChange = onToggle)) {
+    Card(colors = colors, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(painterResource(R.drawable.ic_tile), null, Modifier.size(48.dp))
-            Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
-                Text(if (active) "Âncora ativa" else "Âncora desligada", style = MaterialTheme.typography.titleLarge)
+            Column(Modifier.weight(1f).padding(start = 16.dp)) {
                 Text(
-                    if (active) "Os pontos acompanham o movimento do veículo sobre qualquer app."
-                    else "Ative para mostrar pontos de referência que aliviam o enjoo de movimento.",
+                    when { !active -> "Âncora desligada"; auto -> "Modo Auto"; else -> "Âncora ativa" },
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Text(
+                    when {
+                        !active -> "Ative para mostrar pontos de referência que aliviam o enjoo de movimento."
+                        auto -> "Os pontos aparecem sozinhos acima de ${s.autoSpeedKmh.roundToInt()} km/h."
+                        else -> "Os pontos acompanham o movimento do veículo sobre qualquer app."
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
-            Switch(checked = active, onCheckedChange = null)
         }
     }
+    Choices(listOf("Desligado", "Ligado", "Auto"), if (active) s.mode else 0, onSelect)
 
     val overlayOk = remember(resumeTick) { Settings.canDrawOverlays(context) }
     if (!overlayOk) {
@@ -183,6 +216,31 @@ private fun HomeScreen(active: Boolean, resumeTick: Int, onToggle: (Boolean) -> 
             "O FocoFixo precisa aparecer sobre outros apps para desenhar os pontos.",
             "Permitir",
         ) { openOverlaySettings(context) }
+    }
+    if (auto) {
+        val locationOk = remember(resumeTick) { AnchorService.hasLocationPermission(context) }
+        if (!locationOk) {
+            WarningCard(
+                "Permissão de localização",
+                "O modo Auto usa a velocidade do GPS para ligar e desligar a âncora sozinho.",
+                "Permitir",
+                onRequestLocation,
+            )
+        }
+        val batteryOk = remember(resumeTick) {
+            context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+        }
+        if (!batteryOk) {
+            WarningCard(
+                "Otimização de bateria",
+                "Sem a isenção, o Android pode encerrar o modo Auto em segundo plano.",
+                "Permitir",
+            ) {
+                context.startActivity(
+                    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")),
+                )
+            }
+        }
     }
 }
 
@@ -246,6 +304,10 @@ private fun SettingsScreen(s: AnchorSettings, save: (AnchorSettings) -> Unit) {
         SettingSwitch("Pontos crescem ao acelerar e frear", "Reforça a sensação de aceleração.", s.sizeBoost) {
             save(s.copy(sizeBoost = it))
         }
+        SettingSlider(
+            "Modo Auto liga a partir de ${s.autoSpeedKmh.roundToInt()} km/h", s.autoSpeedKmh, 10f..60f,
+            "Desliga após 3 min devagar.", steps = 9,
+        ) { save(s.copy(autoSpeedKmh = it)) }
     }
 
     Section("Ajuste fino") {

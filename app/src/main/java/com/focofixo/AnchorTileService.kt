@@ -6,6 +6,8 @@ import android.os.Build
 import android.provider.Settings
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 
 /** Atalho na barra de configurações rápidas para ligar/desligar a âncora com um toque. */
 class AnchorTileService : TileService() {
@@ -15,13 +17,15 @@ class AnchorTileService : TileService() {
         if (AnchorService.running) {
             AnchorService.stop(this)
             setState(Tile.STATE_INACTIVE) // `running` muda de forma assíncrona; reflete a intenção já
-        } else if (Settings.canDrawOverlays(this)) {
+        } else if (Settings.canDrawOverlays(this) && (!autoMode() || AnchorService.hasLocationPermission(this))) {
             AnchorService.start(this)
             setState(Tile.STATE_ACTIVE)
         } else {
-            openApp() // sem permissão de overlay: a tela principal explica e pede
+            openApp() // sem permissão de overlay ou localização: a tela principal explica e pede
         }
     }
+
+    private fun autoMode() = runBlocking { SettingsRepo(this@AnchorTileService).flow.first() }.mode == MODE_AUTO
 
     private fun setState(s: Int) { qsTile?.apply { state = s; updateTile() } }
 
