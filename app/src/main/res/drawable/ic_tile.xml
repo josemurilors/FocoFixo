@@ -1,0 +1,10 @@
+<!-- Versão de um tom só, como a barra de configurações rápidas exige -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M8,12a4,4 0 1,0 8,0a4,4 0 1,0 -8,0M1.5,7a2,2 0 1,0 4,0a2,2 0 1,0 -4,0M1.5,17a2,2 0 1,0 4,0a2,2 0 1,0 -4,0M18.5,7a2,2 0 1,0 4,0a2,2 0 1,0 -4,0M18.5,17a2,2 0 1,0 4,0a2,2 0 1,0 -4,0" />
+</vector>

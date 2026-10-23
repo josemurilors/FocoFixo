@@ -1,0 +1,13 @@
+<!-- Motivo do ícone (icons/icon-work/concept-a.svg) reduzido a 0.34 para caber na zona segura de 66dp -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M37,54a17,17 0 1,0 34,0a17,17 0 1,0 -34,0" />
+    <path
+        android:fillColor="#FFC247"
+        android:pathData="M19.3,38.4a7.5,7.5 0 1,0 15,0a7.5,7.5 0 1,0 -15,0M19.3,69.6a7.5,7.5 0 1,0 15,0a7.5,7.5 0 1,0 -15,0M73.7,38.4a7.5,7.5 0 1,0 15,0a7.5,7.5 0 1,0 -15,0M73.7,69.6a7.5,7.5 0 1,0 15,0a7.5,7.5 0 1,0 -15,0" />
+</vector>
