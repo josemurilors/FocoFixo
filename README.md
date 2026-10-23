@@ -61,7 +61,8 @@ O app **não** coleta dados, não acessa a rede (não declara a permissão `INTE
 ### Entregas da versão
 
 - Âncora em overlay com serviço em primeiro plano e ação **Desligar** na notificação.
-- Três padrões visuais: **Pontos**, **Grade** (réguas curtas nas laterais) e **Horizonte** (linha que inclina com a curva).
+- Quatro padrões visuais: **Pontos**, **Grade** (réguas curtas nas laterais), **Horizonte** (linha que inclina com a curva) e **Campo** (grade hexagonal na tela inteira, com os pontos sumindo no centro).
+- Pontos que crescem ao acelerar e frear, e curvas lidas também pelo giroscópio.
 - Atalho (Quick Settings Tile) para ligar e desligar pela barra de configurações rápidas.
 - Ajustes salvos no aparelho: padrão, lado da curva, sensibilidade, tamanho, velocidade, quantidade de pontos, opacidade, limiar de movimento, suavização, cor, taxa do sensor e sumir em repouso.
 
@@ -69,11 +70,14 @@ O app **não** coleta dados, não acessa a rede (não declara a permissão `INTE
 
 ```mermaid
 flowchart TD
-    S["Sensores: aceleração linear + gravidade"] --> M["MotionSource<br/>projeta nos eixos da tela"]
+    S["Sensores: aceleração linear, gravidade, giroscópio"] --> M["MotionSource<br/>projeta nos eixos da tela"]
     M --> F["MotionFilter<br/>passa-alta, suavização, limiar"]
-    F -->|"offset, presença, intensidade"| V["AnchorView<br/>pontos, grade ou horizonte"]
-    F -->|"offset vertical"| D["DotDrift<br/>deslize com inércia"]
-    D --> V
+    M --> G["GyroFusion<br/>yaw, pitch, viés"]
+    M --> Z["SizeEnvelope<br/>tamanho dos pontos"]
+    F -->|"offset, presença, intensidade"| V["AnchorView<br/>pontos, grade, horizonte ou campo"]
+    G --> V
+    Z --> V
+    V --> D["DotDrift e DotField<br/>deslize com inércia"]
     C["SettingsRepo (DataStore)"] --> A["AnchorService<br/>serviço em primeiro plano"]
     A -->|"WindowManager, overlay não tocável"| V
     T["AnchorTileService"] --> A
@@ -103,11 +107,14 @@ FocoFixo/
 │   │   ├── MainActivity.kt        # tela de ajustes (Compose)
 │   │   ├── AnchorService.kt       # serviço em primeiro plano + overlay
 │   │   ├── AnchorTileService.kt   # atalho nas configurações rápidas
-│   │   ├── AnchorView.kt          # desenho dos três padrões
+│   │   ├── AnchorView.kt          # desenho dos quatro padrões
 │   │   ├── MotionSource.kt        # leitura dos sensores
 │   │   ├── ScreenAxes.kt          # projeção da aceleração na tela
+│   │   ├── GyroFusion.kt          # yaw, pitch e viés do giroscópio
 │   │   ├── MotionFilter.kt        # suavização, limiar, presença, intensidade
 │   │   ├── DotDrift.kt            # deslize com inércia ao longo da borda
+│   │   ├── DotField.kt            # campo hexagonal na tela inteira (modo Focus)
+│   │   ├── SizeEnvelope.kt        # crescimento dos pontos ao acelerar e frear
 │   │   └── Settings.kt            # ajustes e DataStore
 │   ├── src/main/res/              # ícone adaptativo e ícone do atalho
 │   └── src/test/java/com/focofixo/  # testes unitários
@@ -124,6 +131,10 @@ FocoFixo/
 - **Filtro** (`MotionFilter.kt`): uma média lenta (1 s) remove componentes constantes, como gravidade residual e curvas longas; uma suavização rápida elimina ruído. Movimento abaixo do **limiar** é ignorado.
 - **Deslize com inércia** (`DotDrift.kt`): a aceleração vira velocidade com atrito de 1,2 s, e os pontos dão a volta na borda. Cada ponto tem um ganho entre 0,7 e 1,3, o que cria o efeito de paralaxe.
 - **Presença e intensidade:** em repouso os pontos somem (2 s); movimento brusco acende mais pontos (metade fica sempre visível).
+- **Giroscópio** (`GyroFusion.kt`): a taxa de giro é decomposta em *yaw* (em torno da vertical) e *pitch* (em torno do eixo lateral da tela). No padrão **Campo** ela rola a grade diretamente: virar para a esquerda faz os pontos irem para a direita, e inclinar o topo do aparelho para longe os faz descer. O viés do giroscópio é estimado enquanto o aparelho está parado, para o campo não derivar sozinho.
+- **Campo** (`DotField.kt`): grade hexagonal que dá a volta nas bordas da tela; no modo *Focus* os pontos somem no centro e ficam inteiros nas bordas e cantos.
+- **Tamanho** (`SizeEnvelope.kt`): a aceleração para frente ou para trás aumenta os pontos em até 2,5× e eles voltam ao normal em cerca de 1 s.
+- **Toques:** a janela do overlay usa opacidade 0,79 no Android 12+, abaixo do limite de 0,8 acima do qual o sistema bloqueia toques que a atravessam.
 
 | Ajuste | Faixa | Padrão |
 | --- | --- | --- |
@@ -136,7 +147,7 @@ FocoFixo/
 | Suavização | 0 a 1 | 0,175 |
 | Taxa do sensor | 30, 60 ou 120 Hz | 60 Hz |
 
-**Limitações:** o deslize contínuo é só vertical; o lateral é um deslocamento limitado. Com taxa de 120 Hz o consumo de bateria sobe.
+**Limitações:** nos padrões de borda o deslize contínuo é só vertical; o lateral é um deslocamento limitado. O campo não é nivelado ao mundo (não gira junto com o ângulo do aparelho). Com taxa de 120 Hz o consumo de bateria sobe.
 
 ## 5. Desenvolvimento e execução local
 
@@ -160,16 +171,18 @@ FocoFixo/
 ./gradlew testDebugUnitTest
 ```
 
-São 20 testes unitários sobre a lógica pura (`MotionFilter`, `ScreenAxes`, `DotDrift`). O desenho, o serviço e o atalho não têm testes automatizados e foram conferidos manualmente.
+São 34 testes unitários sobre a lógica pura (`MotionFilter`, `ScreenAxes`, `GyroFusion`, `DotDrift`, `DotField`, `SizeEnvelope`). O desenho, o serviço e o atalho não têm testes automatizados e foram conferidos manualmente.
 
 ## 6. Critérios de aceite
 
 - [x] O build `assembleDebug` compila e o app instala em aparelho Android.
-- [x] Os 20 testes unitários passam.
+- [x] Os 34 testes unitários passam.
 - [x] A âncora aparece sobre outros apps e funciona no aparelho de desenvolvimento.
 - [x] A aceleração é projetada nos eixos da tela, inclusive com o aparelho girado.
 - [ ] Validação em veículo real da direção dos pontos (frente, trás e curvas) — pendente; hoje só há teste unitário.
-- [ ] Atalho nas configurações rápidas e padrões Grade/Horizonte conferidos em viagem — pendente.
+- [ ] Atalho nas configurações rápidas e padrões Grade, Horizonte e Campo conferidos em viagem — pendente.
+- [ ] Toques passando para o app de baixo no Android 12+ — corrigido com opacidade 0,79, falta confirmar no aparelho.
+- [ ] Sentido do giroscópio (yaw e pitch) no padrão Campo — verificado só por testes unitários.
 - [ ] Ativação automática ao detectar veículo — não implementada (exigiria Google Play Services).
 - [ ] Testes instrumentados do serviço e da interface — não existem.
 
@@ -192,3 +205,5 @@ São 20 testes unitários sobre a lógica pura (`MotionFilter`, `ScreenAxes`, `D
 | José Murilo R. Sabalo | Autor | [@josemurilors](https://github.com/josemurilors) |
 
 Licença [MIT](LICENSE).
+
+**Referências:** o campo de pontos com giroscópio e a opacidade da janela para os toques passarem foram inspirados no [motion-sickness-app](https://github.com/DavidVentura/motion-sickness-app) de David Ventura (GPL-3.0). O código do FocoFixo é independente: nenhum trecho foi copiado, apenas as ideias.

@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 class AnchorService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val filter = MotionFilter(sensitivity = 1f)
+    private val sizeEnvelope = SizeEnvelope()
     private lateinit var motion: MotionSource
     private var view: AnchorView? = null
 
@@ -47,7 +48,11 @@ class AnchorService : Service() {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
-        )
+        ).apply {
+            // Android 12+ bloqueia toques que atravessam uma janela de outro app mais opaca que 0,8;
+            // logo abaixo disso os toques passam para o app de baixo
+            if (Build.VERSION.SDK_INT >= 31) alpha = 0.79f
+        }
         (getSystemService(WINDOW_SERVICE) as WindowManager).addView(v, lp)
         view = v
         running = true
@@ -67,11 +72,12 @@ class AnchorService : Service() {
 
     private fun startMotion(v: AnchorView, rate: Int): Boolean {
         hz = rate
-        return motion.start(rate) { a, dt ->
-            val o = filter.update(a.x, a.y, dt)
+        return motion.start(rate) { s ->
+            val o = filter.update(s.accel.x, s.accel.y, s.dt)
             v.presence = filter.presence
             v.intensity = filter.intensity
-            v.step(o, dt)
+            v.sizeBoost = sizeEnvelope.update(s.accel.y, s.dt)
+            v.step(o, s.rates, s.dt)
         }
     }
 

@@ -60,7 +60,7 @@ class MainActivity : ComponentActivity() {
                         Switch(active, onCheckedChange = { toggle(it) })
                     }
                     Text("Padrão visual")
-                    Row {
+                    Row(Modifier.horizontalScroll(rememberScrollState())) {
                         PATTERNS.forEachIndexed { i, name ->
                             FilterChip(s.pattern == i, { save(s.copy(pattern = i)) }, { Text(name) }, Modifier.padding(end = 8.dp))
                         }
@@ -68,6 +68,10 @@ class MainActivity : ComponentActivity() {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Pontos vão para o lado da curva", Modifier.weight(1f))
                         Switch(s.invertLateral, { save(s.copy(invertLateral = it)) })
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Pontos crescem ao acelerar e frear", Modifier.weight(1f))
+                        Switch(s.sizeBoost, { save(s.copy(sizeBoost = it)) })
                     }
                     Text("Sensibilidade")
                     Slider(s.sensitivity, { save(s.copy(sensitivity = it)) }, valueRange = 0f..3f)

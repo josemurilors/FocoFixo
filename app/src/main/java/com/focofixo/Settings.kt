@@ -16,7 +16,8 @@ val DOT_COLORS = listOf(
 val SAMPLE_RATES = listOf(30, 60, 120)
 const val PATTERN_GRID = 1
 const val PATTERN_HORIZON = 2
-val PATTERNS = listOf("Pontos", "Grade", "Horizonte") // índice = valor de AnchorSettings.pattern
+const val PATTERN_FIELD = 3
+val PATTERNS = listOf("Pontos", "Grade", "Horizonte", "Campo") // índice = valor de AnchorSettings.pattern
 
 data class AnchorSettings(
     val sensitivity: Float = 1f,
@@ -31,6 +32,7 @@ data class AnchorSettings(
     val dotCount: Int = 6,        // pontos por borda
     val pattern: Int = 0,         // índice em PATTERNS
     val invertLateral: Boolean = false, // pontos vão para o lado da curva, em vez do oposto
+    val sizeBoost: Boolean = true,      // pontos crescem ao acelerar e frear
 )
 
 private val Context.store by preferencesDataStore("focofixo")
@@ -46,6 +48,7 @@ private val SPEED = floatPreferencesKey("speed")
 private val COUNT = intPreferencesKey("dot_count")
 private val PATTERN = intPreferencesKey("pattern")
 private val INVERT = booleanPreferencesKey("invert_lateral")
+private val BOOST = booleanPreferencesKey("size_boost")
 
 class SettingsRepo(private val context: Context) {
     val flow: Flow<AnchorSettings> = context.store.data.map { p ->
@@ -63,6 +66,7 @@ class SettingsRepo(private val context: Context) {
             (p[COUNT] ?: d.dotCount).coerceIn(3, 12),
             (p[PATTERN] ?: d.pattern).coerceIn(0, PATTERNS.lastIndex),
             p[INVERT] ?: d.invertLateral,
+            p[BOOST] ?: d.sizeBoost,
         )
     }
 
@@ -70,7 +74,7 @@ class SettingsRepo(private val context: Context) {
         context.store.edit {
             it[SENS] = s.sensitivity; it[SIZE] = s.dotSizeDp; it[ALPHA] = s.opacity
             it[THRESHOLD] = s.threshold; it[DAMPING] = s.damping; it[COLOR] = s.colorIndex; it[HZ] = s.sampleHz; it[FADE] = s.fadeIdle
-            it[SPEED] = s.speed; it[COUNT] = s.dotCount; it[PATTERN] = s.pattern; it[INVERT] = s.invertLateral
+            it[SPEED] = s.speed; it[COUNT] = s.dotCount; it[PATTERN] = s.pattern; it[INVERT] = s.invertLateral; it[BOOST] = s.sizeBoost
         }
     }
 }

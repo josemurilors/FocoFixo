@@ -5,33 +5,46 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.view.View
 
-/** Referência visual nas bordas (pontos ou grade) ou horizonte artificial; reage ao `offset` (em [-1,1], y para cima). */
+/**
+ * Referência visual: pontos ou grade nas bordas, horizonte artificial, ou campo de pontos na tela inteira.
+ * Reage ao `offset` (em [-1,1], y para cima) e às taxas de giro.
+ */
 class AnchorView(context: Context) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND }
     private val border = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND }
 
     private var drift = DotDrift(AnchorSettings().dotCount)
+    private var dots = newField(AnchorSettings().dotCount)
     private var offset = Vec2(0f, 0f)
 
-    /** Um passo de animação: o offset lateral desloca os pontos; o vertical os faz deslizar com inércia. */
-    fun step(o: Vec2, dt: Float) {
-        offset = if (settings.invertLateral) Vec2(-o.x, o.y) else o
+    /**
+     * Um passo de animação: o offset lateral desloca os pontos; o vertical e as taxas de giro (yaw, pitch em rad/s)
+     * os fazem deslizar com inércia.
+     */
+    fun step(o: Vec2, rates: Vec2, dt: Float) {
+        val side = if (settings.invertLateral) -1f else 1f
+        offset = Vec2(o.x * side, o.y)
         drift.update(o.y, dt, settings.speed)
+        // virar para a esquerda (yaw > 0) faz a paisagem passar para a direita; inclinar o topo para longe, para baixo
+        dots.update(o.x * side, o.y, rates.x * YAW_GAIN * side, rates.y * PITCH_GAIN, dt, settings.speed)
         invalidate()
     }
     var presence = 1f  // 0..1, vindo do MotionFilter
     var intensity = 1f // 0..1: movimento mais brusco acende mais pontos
+    var sizeBoost = 1f // 1..2.5: aceleração para frente/trás aumenta os pontos
     private var baseAlpha = 0
+    private var baseR = 0f
     var settings: AnchorSettings = AnchorSettings()
         set(v) {
-            if (v.dotCount != field.dotCount) drift = DotDrift(v.dotCount)
+            if (v.dotCount != field.dotCount) { drift = DotDrift(v.dotCount); dots = newField(v.dotCount) }
             field = v
             invalidate()
         }
 
     override fun onDraw(canvas: Canvas) {
         val d = resources.displayMetrics.density
-        val r = settings.dotSizeDp * d / 2
+        baseR = settings.dotSizeDp * d / 2
+        val r = baseR * (if (settings.sizeBoost) sizeBoost else 1f)
         val fade = if (settings.fadeIdle) presence else 1f
         val a = (settings.opacity * fade * 255).toInt()
         if (a == 0) return
@@ -42,12 +55,29 @@ class AnchorView(context: Context) : View(context) {
         baseAlpha = a
         paint.alpha = a
         border.alpha = a
-        if (settings.pattern == PATTERN_HORIZON) drawHorizon(canvas, r, d) else drawEdges(canvas, r, d)
+        when (settings.pattern) {
+            PATTERN_HORIZON -> drawHorizon(canvas, r, d)
+            PATTERN_FIELD -> drawField(canvas, r, d)
+            else -> drawEdges(canvas, r, d)
+        }
+    }
+
+    /** Campo na tela inteira: os pontos somem no centro e ficam inteiros nas bordas e cantos (modo Focus). */
+    private fun drawField(canvas: Canvas, r: Float, d: Float) {
+        val f = dots // cópia local: o campo pode ser trocado quando a quantidade muda
+        for (i in f.u.indices) {
+            val s = focusScale(f.u[i], f.v[i])
+            if (s <= 0.01f) continue
+            val x = width * f.u[i]
+            val y = height * f.v[i]
+            canvas.drawCircle(x, y, (r + d) * s, border)
+            canvas.drawCircle(x, y, r * s, paint)
+        }
     }
 
     private fun drawEdges(canvas: Canvas, r: Float, d: Float) {
         val reach = width * 0.12f
-        val margin = r * 2.5f
+        val margin = baseR * 2.5f // a margem não acompanha o crescimento dos pontos
         val grid = settings.pattern == PATTERN_GRID
         paint.strokeWidth = 2f * d
         border.strokeWidth = 4f * d
@@ -84,5 +114,10 @@ class AnchorView(context: Context) : View(context) {
         canvas.restore()
     }
 
-    private companion object { const val MAX_TILT_DEG = 25f }
+    private companion object {
+        const val MAX_TILT_DEG = 25f
+        const val YAW_GAIN = 0.5f   // telas/s por rad/s
+        const val PITCH_GAIN = 0.5f
+        fun newField(perSide: Int) = DotField(cols = perSide, rows = perSide * 2) // telas são cerca de 2x mais altas que largas
+    }
 }
