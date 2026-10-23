@@ -66,7 +66,11 @@ class AnchorService : Service() {
 
     private fun startMotion(v: AnchorView, rate: Int): Boolean {
         hz = rate
-        return motion.start(rate) { a, dt -> v.offset = filter.update(a.x, a.y, dt) }
+        return motion.start(rate) { a, dt ->
+            val o = filter.update(a.x, a.y, dt)
+            v.presence = filter.presence
+            v.offset = o
+        }
     }
 
     private fun enterForeground() {

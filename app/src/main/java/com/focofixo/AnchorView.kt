@@ -12,13 +12,16 @@ class AnchorView(context: Context) : View(context) {
 
     var offset: Vec2 = Vec2(0f, 0f)
         set(v) { field = v; invalidate() }
+    var presence = 1f // 0..1, vindo do MotionFilter
     var settings: AnchorSettings = AnchorSettings()
         set(v) { field = v; invalidate() }
 
     override fun onDraw(canvas: Canvas) {
         val d = resources.displayMetrics.density
         val r = settings.dotSizeDp * d / 2
-        val a = (settings.opacity * 255).toInt()
+        val fade = if (settings.fadeIdle) presence else 1f
+        val a = (settings.opacity * fade * 255).toInt()
+        if (a == 0) return
         val color = DOT_COLORS[settings.colorIndex].second
         paint.color = color
         // contorno de cor oposta: o ponto fica visível em fundo claro e escuro

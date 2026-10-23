@@ -52,6 +52,16 @@ class MotionFilterTest {
         assertTrue(abs(a.x) > abs(b.x))
     }
 
+    @Test fun presenceFadesAtRestAndReturnsWithMotion() {
+        val f = MotionFilter(sensitivity = 1f)
+        repeat(60) { f.update(if (it % 20 < 10) 3f else -3f, 0f, dt) }
+        assertTrue(f.presence > 0.8f)
+        repeat(1500) { f.update(0f, 0f, dt) } // 24 s parado
+        assertTrue(f.presence < 0.05f)
+        repeat(40) { f.update(if (it % 20 < 10) 3f else -3f, 0f, dt) }
+        assertTrue(f.presence > 0.5f)
+    }
+
     @Test fun clamped() {
         val f = MotionFilter(sensitivity = 3f)
         repeat(50) {

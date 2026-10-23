@@ -1,6 +1,7 @@
 package com.focofixo
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -22,6 +23,7 @@ data class AnchorSettings(
     val damping: Float = 0.175f, // 0..1 -> constante de suavização
     val colorIndex: Int = 0,
     val sampleHz: Int = 60,
+    val fadeIdle: Boolean = true, // pontos somem com pouco movimento
 )
 
 private val Context.store by preferencesDataStore("focofixo")
@@ -32,6 +34,7 @@ private val THRESHOLD = floatPreferencesKey("threshold")
 private val DAMPING = floatPreferencesKey("damping")
 private val COLOR = intPreferencesKey("color")
 private val HZ = intPreferencesKey("sample_hz")
+private val FADE = booleanPreferencesKey("fade_idle")
 
 class SettingsRepo(private val context: Context) {
     val flow: Flow<AnchorSettings> = context.store.data.map { p ->
@@ -44,13 +47,14 @@ class SettingsRepo(private val context: Context) {
             (p[DAMPING] ?: d.damping).coerceIn(0f, 1f),
             (p[COLOR] ?: d.colorIndex).coerceIn(0, DOT_COLORS.lastIndex),
             (p[HZ] ?: d.sampleHz).takeIf { it in SAMPLE_RATES } ?: d.sampleHz,
+            p[FADE] ?: d.fadeIdle,
         )
     }
 
     suspend fun save(s: AnchorSettings) {
         context.store.edit {
             it[SENS] = s.sensitivity; it[SIZE] = s.dotSizeDp; it[ALPHA] = s.opacity
-            it[THRESHOLD] = s.threshold; it[DAMPING] = s.damping; it[COLOR] = s.colorIndex; it[HZ] = s.sampleHz
+            it[THRESHOLD] = s.threshold; it[DAMPING] = s.damping; it[COLOR] = s.colorIndex; it[HZ] = s.sampleHz; it[FADE] = s.fadeIdle
         }
     }
 }

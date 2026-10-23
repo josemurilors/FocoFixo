@@ -59,6 +59,10 @@ class MainActivity : ComponentActivity() {
                     Slider(s.dotSizeDp, { save(s.copy(dotSizeDp = it)) }, valueRange = 6f..32f)
                     Text("Opacidade")
                     Slider(s.opacity, { save(s.copy(opacity = it)) }, valueRange = 0.1f..1f)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Sumir com pouco movimento", Modifier.weight(1f))
+                        Switch(s.fadeIdle, { save(s.copy(fadeIdle = it)) })
+                    }
                     Text("Limiar de movimento (ignora tremor)")
                     Slider(s.threshold, { save(s.copy(threshold = it)) }, valueRange = 0f..2f)
                     Text("Suavização")
