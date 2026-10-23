@@ -19,10 +19,10 @@
 | --- | --- |
 | **Versão** | 0.1 |
 | **Estado** | Protótipo funcional: âncora, ajustes, atalho nas configurações rápidas e padrões visuais implementados; ainda sem validação em veículo |
-| **Contexto** | Projeto pessoal, inspirado no recurso Vehicle Motion Cues do iOS |
+| **Contexto** | Projeto pessoal, inspirado no recurso Vehicle Motion Cues do iOS e no [motion-sickness-app](https://github.com/DavidVentura/motion-sickness-app) (veja [Referências](#referências-e-créditos)) |
 | **Alvo** | Celulares Android 8.0 (API 26) ou superior |
 
-> **Limite principal:** o FocoFixo não é dispositivo médico e não garante alívio da cinetose. A direção dos movimentos (acelerar, frear, curvas) foi verificada por testes unitários, mas ainda não calibrada em viagem real; por isso existe a chave **Pontos vão para o lado da curva**.
+> **Limite principal:** o FocoFixo não é dispositivo médico e não garante alívio da cinetose. A direção dos movimentos (acelerar, frear, curvas) foi verificada por testes unitários e em emulador com sensores simulados, mas ainda não calibrada em viagem real; por isso existe a chave **Pontos vão para o lado da curva**.
 
 ## Sumário
 
@@ -49,8 +49,11 @@ cd FocoFixo
 Abra o app, conceda **Exibir sobre outros apps** e ative **Ativar âncora**.
 
 <p align="center">
-  <img src="docs/img/screenshot.png" width="300" alt="Tela principal do FocoFixo com o botão de ativar e os ajustes">
+  <img src="docs/img/screenshot.png" width="260" alt="Tela principal do FocoFixo com o botão de ativar e os ajustes">
+  <img src="docs/img/campo.png" width="260" alt="Padrão Campo: grade de pontos sobre a tela inteira, maiores nas bordas e menores no centro">
 </p>
+
+<p align="center"><em>À esquerda, os ajustes. À direita, o padrão Campo sobre a própria tela do app (emulador).</em></p>
 
 ## 1. Objetivo
 
@@ -132,9 +135,9 @@ FocoFixo/
 - **Deslize com inércia** (`DotDrift.kt`): a aceleração vira velocidade com atrito de 1,2 s, e os pontos dão a volta na borda. Cada ponto tem um ganho entre 0,7 e 1,3, o que cria o efeito de paralaxe.
 - **Presença e intensidade:** em repouso os pontos somem (2 s); movimento brusco acende mais pontos (metade fica sempre visível).
 - **Giroscópio** (`GyroFusion.kt`): a taxa de giro é decomposta em *yaw* (em torno da vertical) e *pitch* (em torno do eixo lateral da tela). No padrão **Campo** ela rola a grade diretamente: virar para a esquerda faz os pontos irem para a direita, e inclinar o topo do aparelho para longe os faz descer. O viés do giroscópio é estimado enquanto o aparelho está parado, para o campo não derivar sozinho.
-- **Campo** (`DotField.kt`): grade hexagonal que dá a volta nas bordas da tela; no modo *Focus* os pontos somem no centro e ficam inteiros nas bordas e cantos.
+- **Campo** (`DotField.kt`): grade hexagonal que dá a volta nas bordas da tela; no modo *Focus* os pontos diminuem em direção ao centro e ficam inteiros nas bordas e cantos, deixando o conteúdo livre. A ideia vem do [motion-sickness-app](https://github.com/DavidVentura/motion-sickness-app). Cada ponto anda um pouco diferente dos outros (paralaxe), então a grade vai se desfazendo em uma nuvem conforme o movimento.
 - **Tamanho** (`SizeEnvelope.kt`): a aceleração para frente ou para trás aumenta os pontos em até 2,5× e eles voltam ao normal em cerca de 1 s.
-- **Toques:** a janela do overlay usa opacidade 0,79 no Android 12+, abaixo do limite de 0,8 acima do qual o sistema bloqueia toques que a atravessam.
+- **Toques:** o overlay não captura toques. No Android 12+ a janela usa opacidade 0,79, abaixo do limite de 0,8 acima do qual o sistema pode bloquear toques que atravessam janelas de outros apps. É uma precaução: no emulador (Android 17) os toques passaram também com opacidade 1,0.
 
 | Ajuste | Faixa | Padrão |
 | --- | --- | --- |
@@ -147,7 +150,7 @@ FocoFixo/
 | Suavização | 0 a 1 | 0,175 |
 | Taxa do sensor | 30, 60 ou 120 Hz | 60 Hz |
 
-**Limitações:** nos padrões de borda o deslize contínuo é só vertical; o lateral é um deslocamento limitado. O campo não é nivelado ao mundo (não gira junto com o ângulo do aparelho). Com taxa de 120 Hz o consumo de bateria sobe.
+**Limitações:** nos padrões de borda o deslize contínuo é só vertical; o lateral é um deslocamento limitado. O campo não é nivelado ao mundo (não gira junto com o ângulo do aparelho). O Android esconde overlays em algumas telas do sistema, como o app Configurações; isso é comportamento do sistema. Com taxa de 120 Hz o consumo de bateria sobe.
 
 ## 5. Desenvolvimento e execução local
 
@@ -181,8 +184,9 @@ São 34 testes unitários sobre a lógica pura (`MotionFilter`, `ScreenAxes`, `G
 - [x] A aceleração é projetada nos eixos da tela, inclusive com o aparelho girado.
 - [ ] Validação em veículo real da direção dos pontos (frente, trás e curvas) — pendente; hoje só há teste unitário.
 - [ ] Atalho nas configurações rápidas e padrões Grade, Horizonte e Campo conferidos em viagem — pendente.
-- [ ] Toques passando para o app de baixo no Android 12+ — corrigido com opacidade 0,79, falta confirmar no aparelho.
-- [ ] Sentido do giroscópio (yaw e pitch) no padrão Campo — verificado só por testes unitários.
+- [x] Sentidos do movimento conferidos em emulador Android 17 com sensores simulados: acelerar para a frente desce os pontos, virar para a esquerda os leva para a direita, inclinar o topo para longe os desce.
+- [x] Toques passam para o app de baixo com a âncora ativa sobre a tela inicial (emulador, opacidade 0,79 e 1,0).
+- [ ] Os mesmos sentidos e os toques em aparelho físico e em viagem real — pendente.
 - [ ] Ativação automática ao detectar veículo — não implementada (exigiria Google Play Services).
 - [ ] Testes instrumentados do serviço e da interface — não existem.
 
@@ -206,4 +210,8 @@ São 34 testes unitários sobre a lógica pura (`MotionFilter`, `ScreenAxes`, `G
 
 Licença [MIT](LICENSE).
 
-**Referências:** o campo de pontos com giroscópio e a opacidade da janela para os toques passarem foram inspirados no [motion-sickness-app](https://github.com/DavidVentura/motion-sickness-app) de David Ventura (GPL-3.0). O código do FocoFixo é independente: nenhum trecho foi copiado, apenas as ideias.
+### Referências e créditos
+
+- **Vehicle Motion Cues (Apple):** o recurso do iOS que motivou o projeto e o conceito de pontos como âncora visual.
+- **[motion-sickness-app](https://github.com/DavidVentura/motion-sickness-app), de David Ventura (GPL-3.0):** o padrão **Campo** do FocoFixo tem como referência esse app. Dele vieram as *ideias*: um campo de pontos que cobre a tela inteira e dá a volta nas bordas, o modo *Focus* (pontos pequenos no centro e grandes nas bordas), o uso do giroscópio para rolar o campo, a estimativa do viés do giroscópio com o aparelho parado, o crescimento dos pontos com a aceleração e a opacidade da janela abaixo de 0,8 para os toques passarem.
+- **Sobre o código:** o FocoFixo foi escrito de forma independente. Nenhum trecho do código de David Ventura foi copiado, e por isso este projeto permanece sob licença MIT. Quem quiser ver a implementação original encontra-a no repositório dele, sob GPL-3.0.
