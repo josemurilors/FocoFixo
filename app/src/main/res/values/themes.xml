@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Só o tema da janela; values-v29 segue claro/escuro do sistema. A interface é Compose Material 3. -->
+    <style name="Theme.FocoFixo" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
