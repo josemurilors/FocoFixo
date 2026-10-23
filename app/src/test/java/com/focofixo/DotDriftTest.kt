@@ -41,6 +41,20 @@ class DotDriftTest {
         assertTrue(abs(delta(rest[0], d.y[0])) < 0.001f) // parou
     }
 
+    @Test fun speedScalesTravel() {
+        val slow = DotDrift(4)
+        val fast = DotDrift(4)
+        repeat(30) { slow.update(-0.2f, dt, speed = 0.5f); fast.update(-0.2f, dt, speed = 2f) }
+        assertTrue(delta(0.125f, fast.y[0]) > delta(0.125f, slow.y[0]))
+    }
+
+    @Test fun zeroSpeedKeepsDotsStill() {
+        val d = DotDrift(4)
+        val start = d.y.copyOf()
+        repeat(60) { d.update(-1f, dt, speed = 0f) }
+        for (i in 0 until 4) assertEquals(start[i], d.y[i], 1e-6f)
+    }
+
     @Test fun positionsStayWrappedInUnitRange() {
         val d = DotDrift(6)
         repeat(2000) { d.update(if (it % 400 < 200) -1f else 1f, dt) }

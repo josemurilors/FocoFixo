@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     // shortcut: estado do switch não reflete o serviço se ele for desligado pela notificação; sincronizar se incomodar
@@ -57,6 +58,10 @@ class MainActivity : ComponentActivity() {
                     Slider(s.sensitivity, { save(s.copy(sensitivity = it)) }, valueRange = 0f..3f)
                     Text("Tamanho dos pontos")
                     Slider(s.dotSizeDp, { save(s.copy(dotSizeDp = it)) }, valueRange = 6f..32f)
+                    Text("Velocidade do movimento")
+                    Slider(s.speed, { save(s.copy(speed = it)) }, valueRange = 0.2f..2.5f)
+                    Text("Quantidade de pontos por lado: ${s.dotCount}")
+                    Slider(s.dotCount.toFloat(), { save(s.copy(dotCount = it.roundToInt())) }, valueRange = 3f..12f, steps = 8)
                     Text("Opacidade")
                     Slider(s.opacity, { save(s.copy(opacity = it)) }, valueRange = 0.1f..1f)
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
