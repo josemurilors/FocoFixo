@@ -87,11 +87,12 @@ class MainActivity : ComponentActivity() {
     // o serviço também liga/desliga pela notificação e pelo tile
     override fun onResume() {
         super.onResume()
+        active = AnchorService.running
+        // depois de ler `running`: o serviço inicia de forma assíncrona e restart() já marca ativo
         if (pendingAuto) {
             pendingAuto = false
             if (AnchorService.hasLocationPermission(this)) restart()
         }
-        active = AnchorService.running
         resumeTick++
     }
 
