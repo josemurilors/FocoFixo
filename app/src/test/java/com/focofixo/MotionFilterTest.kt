@@ -37,6 +37,21 @@ class MotionFilterTest {
         assertEquals(0f, v.y, 0f)
     }
 
+    @Test fun thresholdSilencesSmallMotion() {
+        val f = MotionFilter(sensitivity = 1f).apply { threshold = 0.5f }
+        var v = Vec2(1f, 1f)
+        repeat(60) { v = f.update(if (it % 2 == 0) 0.2f else -0.2f, 0f, dt) }
+        assertEquals(0f, v.x, 0f)
+    }
+
+    @Test fun slowerSmoothingReactsLess() {
+        val fast = MotionFilter(sensitivity = 1f).apply { smoothingTau = 0.03f }
+        val slow = MotionFilter(sensitivity = 1f).apply { smoothingTau = 0.4f }
+        var a = Vec2(0f, 0f); var b = Vec2(0f, 0f)
+        repeat(5) { a = fast.update(2f, 0f, dt); b = slow.update(2f, 0f, dt) }
+        assertTrue(abs(a.x) > abs(b.x))
+    }
+
     @Test fun clamped() {
         val f = MotionFilter(sensitivity = 3f)
         repeat(50) {

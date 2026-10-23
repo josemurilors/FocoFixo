@@ -37,7 +37,7 @@ class AnchorService : Service() {
 
         val v = AnchorView(this)
         motion = MotionSource(this)
-        if (!motion.start { ax, ay, dt -> v.offset = filter.update(ax, ay, dt) }) {
+        if (!startMotion(v, SAMPLE_RATES[1])) {
             Toast.makeText(this, "Este aparelho não tem sensor de movimento.", Toast.LENGTH_LONG).show()
             stopSelf(); return START_NOT_STICKY
         }
@@ -53,10 +53,20 @@ class AnchorService : Service() {
         scope.launch {
             SettingsRepo(this@AnchorService).flow.collect { s ->
                 filter.sensitivity = s.sensitivity
+                filter.threshold = s.threshold
+                filter.smoothingTau = 0.03f + 0.4f * s.damping
                 v.settings = s
+                if (s.sampleHz != hz) { motion.stop(); startMotion(v, s.sampleHz) }
             }
         }
         return START_NOT_STICKY
+    }
+
+    private var hz = 0
+
+    private fun startMotion(v: AnchorView, rate: Int): Boolean {
+        hz = rate
+        return motion.start(rate) { a, dt -> v.offset = filter.update(a.x, a.y, dt) }
     }
 
     private fun enterForeground() {

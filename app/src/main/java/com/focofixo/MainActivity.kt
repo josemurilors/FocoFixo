@@ -12,6 +12,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -39,7 +43,7 @@ class MainActivity : ComponentActivity() {
                 val s by repo.flow.collectAsState(AnchorSettings())
                 val scope = rememberCoroutineScope()
                 fun save(n: AnchorSettings) = scope.launch { repo.save(n) }
-                Column(Modifier.padding(24.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp)) {
                     Text("FocoFixo", style = MaterialTheme.typography.headlineMedium)
                     Text("Pontos de referência na tela para aliviar o enjoo de movimento.")
                     Row(
@@ -55,6 +59,22 @@ class MainActivity : ComponentActivity() {
                     Slider(s.dotSizeDp, { save(s.copy(dotSizeDp = it)) }, valueRange = 6f..32f)
                     Text("Opacidade")
                     Slider(s.opacity, { save(s.copy(opacity = it)) }, valueRange = 0.1f..1f)
+                    Text("Limiar de movimento (ignora tremor)")
+                    Slider(s.threshold, { save(s.copy(threshold = it)) }, valueRange = 0f..2f)
+                    Text("Suavização")
+                    Slider(s.damping, { save(s.copy(damping = it)) }, valueRange = 0f..1f)
+                    Text("Cor")
+                    Row(Modifier.horizontalScroll(rememberScrollState())) {
+                        DOT_COLORS.forEachIndexed { i, (name, _) ->
+                            FilterChip(s.colorIndex == i, { save(s.copy(colorIndex = i)) }, { Text(name) }, Modifier.padding(end = 8.dp))
+                        }
+                    }
+                    Text("Taxa do sensor (menos Hz economiza bateria)")
+                    Row {
+                        SAMPLE_RATES.forEach { hz ->
+                            FilterChip(s.sampleHz == hz, { save(s.copy(sampleHz = hz)) }, { Text("$hz Hz") }, Modifier.padding(end = 8.dp))
+                        }
+                    }
                 }
             }
         }
